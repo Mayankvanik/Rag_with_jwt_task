@@ -25,33 +25,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["RAG Chat System"])
 
-@router.post("/upload", response_model=FileUploadResponse)
-async def upload_document(
-    file: UploadFile = File(..., description="Document to upload (PDF, TXT, or Markdown)"),
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Upload and process documents (PDFs, TXT, or Markdown files) for RAG system
-    """
-    try:
-        user_id = current_user.get("username")
-        
-        # Process and store the file
-        result = await file_processor.process_and_store(file, user_id)
-        
-        logger.info(f"✅ Document uploaded successfully by user: {user_id}")
-        
-        return FileUploadResponse(**result)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Document upload error for user {current_user.get('username')}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload document: {str(e)}"
-        )
-
 @router.post("/ask", response_model=ChatResponse)
 async def chat_with_documents(
     chat_request: ChatRequest,
@@ -215,67 +188,6 @@ async def check_vector_db_health(
             vector_count=0,
             indexed=False,
             error=str(e)
-        )
-
-@router.get("/documents/summary", response_model=DocumentSummary)
-async def get_documents_summary(
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Get summary of user's uploaded documents
-    """
-    try:
-        user_id = current_user.get("username")
-        
-        # Search for user's documents (get all with a generic query)
-        user_docs = await text_chunker.search_documents(
-            query="",  # Empty query to get all documents
-            user_id=user_id,
-            limit=1000  # High limit to get all documents
-        )
-        
-        if not user_docs:
-            return DocumentSummary(
-                total_documents=0,
-                total_chunks=0,
-                file_types={},
-                total_characters=0,
-                upload_dates=[]
-            )
-        
-        # Analyze documents
-        file_types = {}
-        upload_dates = set()
-        total_characters = 0
-        unique_files = set()
-        
-        for doc in user_docs:
-            metadata = doc.get("metadata", {})
-            filename = metadata.get("filename", "unknown")
-            file_type = metadata.get("file_type", "unknown")
-            upload_date = metadata.get("upload_date")
-            chunk_size = metadata.get("chunk_size", 0)
-            
-            unique_files.add(filename)
-            file_types[file_type] = file_types.get(file_type, 0) + 1
-            total_characters += chunk_size
-            
-            if upload_date:
-                upload_dates.add(upload_date)
-        
-        return DocumentSummary(
-            total_documents=len(unique_files),
-            total_chunks=len(user_docs),
-            file_types=file_types,
-            total_characters=total_characters,
-            upload_dates=sorted(list(upload_dates))
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ Document summary error for user {current_user.get('username')}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get document summary: {str(e)}"
         )
 
 @router.post("/documents/batch-upload")
